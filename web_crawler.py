@@ -1,103 +1,106 @@
-import random
-import requests
 from bs4 import BeautifulSoup
-import time
+from urllib.parse import urljoin
+from urllib.parse import urlparse
+import concurrent.futures
+import aiohttp
+import asyncio
+from collections import deque
 
-# List of user-agent strings
-user_agents = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Firefox/100.0.0.0 Safari/537.36",
-    # Add more user agents as needed
-]
+crawled_count = 0
+thread_lock = asyncio.Lock()
 
-# List of proxy servers (example, replace with actual proxy addresses)
-proxies = [
-    'http://proxy1.example.com:8080',
-    'http://proxy2.example.com:8080',
-    # Add more proxy addresses as needed
-]
+def save_adjacency_matrix_to_file(matrix, filename="adjacency_matrix.txt"):
+    """Save the adjacency matrix to a specified file."""
+    with open(filename, 'w') as file:
+        for url, links in matrix.items():
+            file.write(f"{url}\n")
+            for link in links:
+                file.write(f"  -> {link}\n")
+            file.write("\n")
 
-# Define a constant for the maximum number of requests per minute
-MAX_REQUESTS_PER_MINUTE = 60
+def save_domains_to_file(matrix, filename="domains.txt"):
+    """Save the unique domains from the matrix to a specified file."""
+    domains = set()
+    for url in matrix.keys():
+        domain = urlparse(url).netloc
+        domains.add(domain)
+    with open(filename, 'w') as file:
+        for domain in domains:
+            file.write(f"{domain}\n")
 
-# Keep track of the last request time
-last_request_time = None
-
-# Function to get a random user-agent
-def get_random_user_agent():
-    return random.choice(user_agents)
-
-# Function to get a random proxy
-def get_random_proxy():
-    return random.choice(proxies)
-
-# Function to check and enforce rate limiting
-def enforce_rate_limit():
-    global last_request_time
-    if last_request_time is not None:
-        elapsed_time = time.time() - last_request_time
-        if elapsed_time < 60:  # Less than 60 seconds (1 minute)
-            time.sleep(60 - elapsed_time)  # Wait to ensure rate limit compliance
-    last_request_time = time.time()
-
-# Modify the crawl_web function to set user-agent, proxy, and enforce rate limiting for each request
-def crawl_web(query):
-    # Use Google search URL
-    search_url = f"https://www.google.com/search?q={query}"
-    
+async def get_links(url):
+    """Fetch the webpage asynchronously and return a list of links."""
     try:
-        enforce_rate_limit()  # Enforce rate limiting before making the request
-        
-        # Randomly select a user-agent for this request
-        headers = {'User-Agent': get_random_user_agent()}
-        
-        # Randomly select a proxy for this request
-        proxy = {'http': get_random_proxy()}
-        
-        # Send an HTTP GET request with the selected user-agent and proxy
-        response = requests.get(search_url, headers=headers, proxies=proxy)
-        response.raise_for_status()  # Check for any request errors
-        
-        # Parse the HTML content using BeautifulSoup
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # Extract search result titles (example)
-        result_titles = soup.find_all('h3', class_='t')  # Adjust this based on actual HTML structure
-        
-        # Format and return the results
-        results = "\n".join([title.text for title in result_titles])
-        return results
-    
-    except requests.exceptions.RequestException as e:
-        return f"An error occurred: {str(e)}"
+        timeout = aiohttp.ClientTimeout(total=5)  # Set a timeout of 5 seconds
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(url) as response:
+                page_content = await response.text()
+                soup = BeautifulSoup(page_content, 'html.parser')
+                links = [a['href'] for a in soup.find_all('a', href=True) if 'http' in a['href']]
+                return links
+    except Exception as e:
+        print(f"Could not fetch URL {url}: {e}")
+        return []
 
-# Sample modification to handle IMDb search results (you can adapt this for other websites)
-def crawl_imdb(query):
-    # Use IMDb search URL
-    search_url = f"https://www.imdb.com/find?q={query}&s=tt"
-    
-    try:
-        enforce_rate_limit()  # Enforce rate limiting before making the request
-        
-        # Randomly select a user-agent for this request
-        headers = {'User-Agent': get_random_user_agent()}
-        
-        # Randomly select a proxy for this request
-        proxy = {'http': get_random_proxy()}
-        
-        # Send an HTTP GET request with the selected user-agent and proxy
-        response = requests.get(search_url, headers=headers, proxies=proxy)
-        response.raise_for_status()  # Check for any request errors
-        
-        # Parse the HTML content using BeautifulSoup for IMDb search results
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # Extract search result titles from IMDb (specific to IMDb's structure)
-        result_titles = soup.find_all('td', class_='result_text')
-        
-        # Format and return the results (specific to IMDb)
-        results = "\n".join([title.text.strip() for title in result_titles])
-        return results
-    
-    except requests.exceptions.RequestException as e:
-        return f"An error occurred: {str(e)}"
+async def print_crawled_count():
+    """Periodically print the number of successfully crawled pages."""
+    global crawled_count
+    while True:
+        print(f"Number of pages successfully crawled: {crawled_count}")
+        await asyncio.sleep(5)
+
+async def build_adjacency_matrix(start_url, max_depth=2):
+    global crawled_count
+    visited = set()
+    queue = deque([(start_url, 0)])
+    adjacency_matrix = {}
+
+    while queue:
+        url, depth = queue.popleft()
+
+        if depth > max_depth:
+            continue
+
+        if url not in visited:
+            visited.add(url)
+            links = await get_links(url)
+
+            if links is not None:
+                async with thread_lock:
+                    crawled_count += 1
+                adjacency_matrix[url] = links
+
+                for link in links:
+                    queue.append((link, depth + 1))
+
+    return adjacency_matrix
+
+# Async entry point
+async def main():
+    start_url = "https://www.scrapingbee.com/blog/crawling-python/"
+
+    # Create a task to print the crawled count
+    print_task = asyncio.create_task(print_crawled_count())
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        loop = asyncio.get_event_loop()
+        futures = [
+            loop.run_in_executor(executor, asyncio.run, build_adjacency_matrix(start_url))
+            for _ in range(5)
+        ]
+        matrix_list = await asyncio.gather(*futures)
+
+    # Merge matrices
+    final_matrix = {}
+    for matrix in matrix_list:
+        final_matrix.update(matrix)
+
+    # Save the matrix and domains
+    save_adjacency_matrix_to_file(final_matrix)
+    save_domains_to_file(final_matrix)
+
+    # Cancel the print_task once the crawling is complete
+    print_task.cancel()
+
+if __name__ == "__main__":
+    asyncio.run(main())
