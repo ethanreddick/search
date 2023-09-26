@@ -8,6 +8,7 @@ from collections import deque
 
 crawled_count = 0
 thread_lock = asyncio.Lock()
+queue = deque()
 
 def save_adjacency_matrix_to_file(matrix, filename="adjacency_matrix.txt"):
     """Save the adjacency matrix to a specified file."""
@@ -36,23 +37,30 @@ async def get_links(url):
             async with session.get(url) as response:
                 page_content = await response.text()
                 soup = BeautifulSoup(page_content, 'html.parser')
-                links = [a['href'] for a in soup.find_all('a', href=True) if 'http' in a['href']]
+
+                # Convert relative URLs to absolute URLs
+                links = [urljoin(url, a['href']) for a in soup.find_all('a', href=True)]
+
                 return links
     except Exception as e:
         print(f"Could not fetch URL {url}: {e}")
         return []
 
 async def print_crawled_count():
-    """Periodically print the number of successfully crawled pages."""
     global crawled_count
+    global queue
+    
     while True:
-        print(f"Number of pages successfully crawled: {crawled_count}")
+        print(f"Number of pages successfully crawled: {crawled_count}, Remaining in queue: {len(queue)}")
         await asyncio.sleep(5)
 
 async def build_adjacency_matrix(start_url, max_depth=2):
     global crawled_count
+    global queue
+    
     visited = set()
-    queue = deque([(start_url, 0)])
+    queue.clear()
+    queue.append((start_url, 0))
     adjacency_matrix = {}
 
     while queue:
