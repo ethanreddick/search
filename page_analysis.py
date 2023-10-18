@@ -1,25 +1,59 @@
-import sqlite3
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 import aiohttp
 import asyncio
 import os
+import psycopg2  # PostgreSQL adapter for Python
+from psycopg2.pool import SimpleConnectionPool
 
-DB_NAME = 'web_data.db'
-SEM = asyncio.Semaphore(10)  # Limiting the number of concurrent requests
-processed_urls_count = 0  # shared variable to keep track of the number of URLs processed
+DATABASE_CONFIG = {
+    'dbname': 'template1', # TODO: update this later to real DB
+    'user': 'ethan',
+    'password': 'search',
+    'host': 'localhost',
+    'port': '5432'
+}
+SEM = asyncio.Semaphore(30)  # Limiting the number of concurrent requests
+processed_urls_count = 0  # shared varizable to keep track of the number of URLs processed
 lock = asyncio.Lock()  # a lock to ensure only one task updates processed_urls_count at a time
 
-def setup_database():
-    with sqlite3.connect(DB_NAME) as conn:
+connection_pool = SimpleConnectionPool(1, 20, **DATABASE_CONFIG)
+
+batched_data = []
+
+async def store_analysis_in_db(url, content):
+    global batched_data
+    
+    # Check if the URL is already in the batched_data. If so, skip it.
+    if any(item for item in batched_data if item[0] == url):
+        return
+    
+    batched_data.append((url, content))
+    
+    if len(batched_data) >= 100:  # choose an appropriate batch size
+        conn = connection_pool.getconn()
         cursor = conn.cursor()
-        cursor.execute('''
-        CREATE TABLE IF NOT EXISTS page_data (
-            url TEXT PRIMARY KEY,
-            content TEXT
-        )
-        ''')
-        conn.commit()
+        try:
+            args_str = ','.join(cursor.mogrify("(%s,%s)", x).decode("utf-8") for x in batched_data)
+            cursor.execute("INSERT INTO page_data (url, content) VALUES " + args_str + " ON CONFLICT (url) DO UPDATE SET content = EXCLUDED.content")
+            conn.commit()
+            batched_data.clear()
+        finally:
+            cursor.close()
+            connection_pool.putconn(conn)
+
+def setup_database():
+    conn = psycopg2.connect(**DATABASE_CONFIG)
+    cursor = conn.cursor()
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS page_data (
+        url TEXT PRIMARY KEY,
+        content TEXT
+    )
+    ''')
+    conn.commit()
+    cursor.close()
+    conn.close()
 
 def is_valid_url(url):
     try:
@@ -51,15 +85,22 @@ async def extract_content_from_url(url, total_urls):
                 processed_urls_count += 1
                 print(f"Progress: {processed_urls_count/total_urls*100:.2f}% - Error fetching {url}: {e}")
 
-async def store_analysis_in_db(url, content):
-    with sqlite3.connect(DB_NAME) as conn:
-        cursor = conn.cursor()
-        cursor.execute("INSERT OR REPLACE INTO page_data (url, content) VALUES (?, ?)", (url, content))
-        conn.commit()
 
 async def process_urls(urls):
     tasks = [extract_content_from_url(url, len(urls)) for url in urls]
     await asyncio.gather(*tasks)
+
+    if batched_data:
+        conn = connection_pool.getconn()
+        cursor = conn.cursor()
+        try:
+            args_str = ','.join(cursor.mogrify("(%s,%s)", x).decode("utf-8") for x in batched_data)
+            cursor.execute("INSERT INTO page_data (url, content) VALUES " + args_str + " ON CONFLICT (url) DO UPDATE SET content = EXCLUDED.content")
+            conn.commit()
+        finally:
+            cursor.close()
+            connection_pool.putconn(conn)
+
 
 if __name__ == "__main__":
     setup_database()
