@@ -1,2 +1,2 @@
 # search
-CS Capstone Project with Justin Nelson exploring internet search
+CS Capstone Project by Ethan Reddick and Justin Nelson exploring internet search and how to improve it.
