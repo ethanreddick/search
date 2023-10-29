@@ -7,12 +7,16 @@ import asyncio
 from collections import deque
 import os
 import signal
+from threading import Lock
 
-# Current counters
-crawled_count = 0
-skipped_count = 0
 thread_lock = asyncio.Lock()
 queue = deque()
+save_lock = Lock()
+save_interval_seconds = 30   # Save every 30 seconds
+
+# Counters
+crawled_count = 0
+skipped_count = 0
 
 # Initial attempt to cut down on unneccessary websites
 WHITELIST_KEYWORDS = ["research", "tutorial", "guide", "article", "blog", "study", "insight", "analysis"]
@@ -20,7 +24,11 @@ BLACKLIST_KEYWORDS = ["buy now", "special offer", "promo code", "purchase", "sho
 
 MATRIX_FILENAME = "adjacency_matrix.txt"
 
-def save_adjacency_matrix_to_file(matrix, filename=MATRIX_FILENAME):
+async def save_adjacency_matrix_to_file(matrix, filename=MATRIX_FILENAME):
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, _sync_save_adjacency_matrix_to_file, matrix, filename)
+
+def _sync_save_adjacency_matrix_to_file(matrix, filename):
     print(f"Saving {len(matrix)} URLs to file...")
     with open(filename, 'w') as file:
         for url, links in matrix.items():
@@ -96,13 +104,35 @@ async def print_crawled_count():
         print(f"Pages crawled: {crawled_count}, Skipped domains: {skipped_count}, Remaining in queue: {len(queue)}")
         await asyncio.sleep(5)
 
+save_lock = asyncio.Lock()
+
+async def get_adjacency_matrix_length():
+    async with save_lock:
+        return len(adjacency_matrix)
+
+async def add_to_adjacency_matrix(url, links):
+    async with save_lock:
+        adjacency_matrix[url] = links
+
+
 async def periodic_save():
+
     """Periodically save the adjacency matrix."""
     while True:
-        await asyncio.sleep(30)  # Save every 5 minutes
-        save_count = len(adjacency_matrix)
-        save_adjacency_matrix_to_file(adjacency_matrix)
-        print(f"Saving {save_count} URLs to file...")
+        print("Waiting ", save_interval_seconds, "seconds to save...")
+        await asyncio.sleep(save_interval_seconds)
+        
+        print("Attempting to save...")  
+        async with save_lock:
+            print("Acquired lock for saving...")
+            
+            # Capture the matrix to save
+            matrix_to_save = adjacency_matrix.copy()
+
+            # Save the data
+            await save_adjacency_matrix_to_file(matrix_to_save)
+            print(f"Finished saving {len(matrix_to_save)} URLs to file...")
+
 
 def graceful_shutdown(loop):
     """Save the adjacency matrix and stop the loop."""
@@ -134,12 +164,11 @@ async def build_adjacency_matrix(start_url, max_depth=2):
                 if links is not None:
                     async with thread_lock:
                         crawled_count += 1
-                    adjacency_matrix[url] = links
+                    await add_to_adjacency_matrix(url, links)  # Use the new function here
 
                     for link in links:
                         queue.append((link, depth + 1))
         else:
-            #print(f"Skipped domain: {url}")
             async with thread_lock:
                 skipped_count += 1
 
@@ -173,17 +202,19 @@ async def print_crawled_count():
         await asyncio.sleep(5)
 
 async def main():
+    global save_lock
+    global thread_lock
+    save_lock = asyncio.Lock()
+    thread_lock = asyncio.Lock()
+
+
     start_url = "https://www.scrapingbee.com/blog/crawling-python/"
     print_task = asyncio.create_task(print_crawled_count())
-    save_task = asyncio.create_task(periodic_save())  # This is new
+    save_task = asyncio.create_task(periodic_save())
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        loop = asyncio.get_event_loop()
-        futures = [
-            loop.run_in_executor(executor, asyncio.run, build_adjacency_matrix(start_url))
-            for _ in range(5)
-        ]
-        matrix_list = await asyncio.gather(*futures)
+    futures = [build_adjacency_matrix(start_url) for _ in range(5)]
+    matrix_list = await asyncio.gather(*futures)
+
 
     global adjacency_matrix
     async with thread_lock:
