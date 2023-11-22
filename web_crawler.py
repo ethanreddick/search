@@ -69,20 +69,6 @@ async def load_adjacency_matrix_from_db():
         await conn.close()
     return matrix
 
-async def is_url_in_adjacency_matrix(url):
-    try:
-        conn = await asyncpg.connect(DATABASE_URL)
-        result = await conn.fetchval('''
-            SELECT COUNT(*) FROM adjacency_matrix WHERE url = $1;
-        ''', url)
-        return result > 0
-    except Exception as e:
-        # Log or handle the exception as necessary
-        print(f"Error checking URL in database: {e}")
-        return False
-    finally:
-        await conn.close()
-
 loop = asyncio.get_event_loop()
 adjacency_matrix = loop.run_until_complete(load_adjacency_matrix_from_db())
 
@@ -108,33 +94,6 @@ async def get_links(url):
     except Exception as e:
         #print(f"Could not fetch URL {url}: {e}")
         return []
-
-async def get_page_content(url):
-    try:
-        timeout = aiohttp.ClientTimeout(total=5)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(url) as response:
-                page_content = await response.text()
-                soup = BeautifulSoup(page_content, 'html.parser')
-
-                # Extracting title
-                title = soup.title.string if soup.title else ''
-
-                # Extracting body text
-                body = ' '.join([p.get_text() for p in soup.find_all('p')])
-
-                # Extracting headers (h1, h2, h3)
-                headers = ' '.join([header.get_text() for header in soup.find_all(['h1', 'h2', 'h3'])])
-
-                # Extracting links
-                links = [urljoin(url, a['href']) for a in soup.find_all('a', href=True)]
-                links = filter_invalid_links(links)
-
-                return links, title, body, headers
-    except Exception as e:
-        # Log or handle the exception as necessary
-        return [], '', '', ''
-
 
 async def print_crawled_count():
     global crawled_count
@@ -166,19 +125,6 @@ async def periodic_save():
 
             #print(f"Finished saving {len(new_urls_to_save)} URLs to file...")
 
-async def save_page_content_to_db(url, title, body, headers):
-    try:
-        conn = await asyncpg.connect(DATABASE_URL)
-        await conn.execute('''
-            INSERT INTO page_contents (url, title, body, headers) 
-            VALUES ($1, $2, $3, $4)
-        ''', url, title, body, headers)
-    except Exception as e:
-        # Log or handle the exception as necessary
-        print(f"Error saving page content to database: {e}")
-    finally:
-        await conn.close()
-
 async def build_adjacency_matrix(start_url, max_depth=2):
     local_visited = set()
     local_adjacency_matrix = {}
@@ -194,10 +140,6 @@ async def build_adjacency_matrix(start_url, max_depth=2):
         if depth > max_depth:
             continue
 
-        if not await is_url_in_adjacency_matrix(url):
-            print(f"URL not in adjacency matrix, skipping: {url}")
-            continue
-
         async with thread_lock:
             if url in in_progress or url in local_visited:
                 continue
@@ -205,7 +147,7 @@ async def build_adjacency_matrix(start_url, max_depth=2):
         
         if depth == 0 or await evaluate_domain(url):
             local_visited.add(url)
-            links, title, body, headers = await get_page_content(url)  # edited
+            links = await get_links(url)
             if links is not None:
                 crawled_count += 1
                 session_crawled_count += 1
@@ -214,7 +156,6 @@ async def build_adjacency_matrix(start_url, max_depth=2):
                 
                 async with save_lock:
                     adjacency_matrix[url] = links
-                    await save_page_content_to_db(url, title, body, headers)
 
                 for link in links:
                     local_queue.append((link, depth + 1))
@@ -274,7 +215,7 @@ async def main():
     global save_lock
     global thread_lock
 
-    start_url = "https://www.scrapingbee.com/blog/crawling-python/" #Allow user to input this and white/blacklist
+    start_url = "https://www.scrapingbee.com/blog/crawling-python/"
     print_task = asyncio.create_task(print_crawled_count())
     save_task = asyncio.create_task(periodic_save())
 
