@@ -6,6 +6,7 @@ import threading # Python module for working with threads
 from urllib.parse import urljoin # Allows us to convert all URLs to absolute URLs
 
 SEED_URL = "https://www.scrapingbee.com/blog/crawling-python/"
+crawled_sites_count = 0
 
 # Database connection setup
 def connect_database():
@@ -20,6 +21,8 @@ def connect_database():
 def save_page_details(url, title, headers):
     conn = connect_database()
     cur = conn.cursor()
+    # Ensuring all URLs can fit in the DB
+    if len(url) > 254: return None
     try:
         cur.execute(
             """
@@ -46,6 +49,8 @@ def save_page_links(page_id, links):
     cur = conn.cursor()
 
     for link in links:
+        # Ensuring all link entries can fit in the DB
+        if len(link) > 254: continue
         cur.execute(
             """
             INSERT INTO page_links (page_id, link) 
@@ -59,6 +64,7 @@ def save_page_links(page_id, links):
 
 # Visits a page and collects the title, headers, and links, and passes them to the DB querying functions.
 def scrape_page(url):
+    global crawled_sites_count
     response = requests.get(url) # Sends an HTTP GET request using 'requests'
     soup = BeautifulSoup(response.content, 'html.parser') # Creates the BeautifulSoup object which represents the page document as a nested data structure
 
@@ -83,7 +89,7 @@ def scrape_page(url):
             )
         ]
 
-    print("Adding links...\n%s", links) # Debug statement to check process
+    #print("Adding links...\n%s", links)
 
     # Saves page URL, title, and headers to page_details table in DB
     page_id = save_page_details(url, page_title, headers)
@@ -91,6 +97,8 @@ def scrape_page(url):
     if page_id is not None:
         save_page_links(page_id, links)
 
+    crawled_sites_count += 1
+    print("Pages crawled:", crawled_sites_count)
     return links
 
 def main(seed_url):
