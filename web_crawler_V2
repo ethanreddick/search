@@ -5,8 +5,13 @@ from queue import Queue # Python module that provides a queue implementation
 import threading # Python module for working with threads
 from urllib.parse import urljoin # Allows us to convert all URLs to absolute URLs
 from bloom_filter2 import BloomFilter # https://github.com/remram44/python-bloom-filter
+import csv # Python's built-in module for processing .csv files
 
-SEED_URL = "https://www.scrapingbee.com/blog/crawling-python/"
+# TODO: Transition to using whitelisted URLs, only exploring subdomains
+# https://tranco-list.eu/list/25G99/1000000 (Top 1 million most visited domains)
+# TODO: Add multithreading for scraping
+
+SEED_URL = "https://www.scrapingbee.com/blog/crawling-python/" # TODO: Temporary
 acceptable_domain_extensions = [".com", ".net", ".edu", ".org", ".gov", ".mil"]
 # Initialize bloom filter with 100M element capactiy and 1% error tolerance
 bloom_filter = BloomFilter(max_elements = 100000000, error_rate = 0.01)
@@ -21,6 +26,14 @@ def connect_database():
         user = "ethan",
         password = "search"
     )
+
+# Collect top-level domains (TLDs) from the .csv file
+def read_domains_from_csv(file_name):
+    with open(file_name, newline = '') as csvfile:
+        reader = csv.reader(csvfile)
+        # In the .csv file the domain names are the second entry in each row (second column)
+        # Example format of the .csv file is '1,google.com' on the first line
+        return [row[1] for row in reader] # This returns each top-level domain name
 
 # Saves page URL, title, and headers to the page_details table in DB
 def save_page_details(url, title, headers):
@@ -70,6 +83,7 @@ def save_page_links(page_id, links):
 # Attempts to determine if a site is of high quality or if it should be discarded, returns true for quality.
 def evaluate_site_quality(url):
     global acceptable_domain_extensions
+
     # All rules that can cause a site to fail prior to visiting the site
     # Eliminate invalid URLs not starting with 'https://'
     if not url.startswith("https://"): return False
@@ -80,6 +94,8 @@ def evaluate_site_quality(url):
     response = requests.get(url)
     # Eliminate sites with a response time above 1 second
     if response.elapsed.total_seconds() > 1: return False
+    # Eliminate sites with a response other than an HTML document
+    if "text/html" not in response.headers.get('Content-Type', ''): return False
 
     return True
 
@@ -118,13 +134,15 @@ def scrape_page(url):
         save_page_links(page_id, links)
 
     crawled_sites_count += 1
-    print("Pages crawled:", crawled_sites_count, "Skipped:", skipped_sites_count)
+    skipped_percentage = (skipped_sites_count / crawled_sites_count) * 100
+    # Debug statement that provides updates
+    print("Pages crawled:", crawled_sites_count, "Skipped:", skipped_sites_count, f"({skipped_percentage :.2f}% Skipped)")
     return links
 
 def main(seed_url):
     global skipped_sites_count
     # Initializing the URLs in the queue with the SEED_URL
-    urls_to_visit = set([seed_url])
+    urls_to_visit = set([seed_url]) # TODO: Replace with URL frontier file? This approach is not scalable
 
     # For all URLs remaining in the queue
     while urls_to_visit:
