@@ -4,9 +4,14 @@ import psycopg2 # PostgreSQL database adapter for Python
 from queue import Queue # Python module that provides a queue implementation
 import threading # Python module for working with threads
 from urllib.parse import urljoin # Allows us to convert all URLs to absolute URLs
+from bloom_filter2 import BloomFilter # https://github.com/remram44/python-bloom-filter
 
 SEED_URL = "https://www.scrapingbee.com/blog/crawling-python/"
+acceptable_domain_extensions = [".com", ".net", ".edu", ".org", ".gov", ".mil"]
+# Initialize bloom filter with 100M element capactiy and 1% error tolerance
+bloom_filter = BloomFilter(max_elements = 100000000, error_rate = 0.01)
 crawled_sites_count = 0
+skipped_sites_count = 0
 
 # Database connection setup
 def connect_database():
@@ -62,9 +67,26 @@ def save_page_links(page_id, links):
     cur.close()
     conn.close()
 
+# Attempts to determine if a site is of high quality or if it should be discarded, returns true for quality.
+def evaluate_site_quality(url):
+    global acceptable_domain_extensions
+    # All rules that can cause a site to fail prior to visiting the site
+    # Eliminate invalid URLs not starting with 'https://'
+    if not url.startswith("https://"): return False
+    # Eliminate URLs that do not have an acceptable domain extension
+    if not any(extension in url for extension in acceptable_domain_extensions): return False
+
+    # All other rules
+    response = requests.get(url)
+    # Eliminate sites with a response time above 1 second
+    if response.elapsed.total_seconds() > 1: return False
+
+    return True
+
 # Visits a page and collects the title, headers, and links, and passes them to the DB querying functions.
 def scrape_page(url):
     global crawled_sites_count
+    global skipped_sites_count
     response = requests.get(url) # Sends an HTTP GET request using 'requests'
     soup = BeautifulSoup(response.content, 'html.parser') # Creates the BeautifulSoup object which represents the page document as a nested data structure
 
@@ -89,8 +111,6 @@ def scrape_page(url):
             )
         ]
 
-    #print("Adding links...\n%s", links)
-
     # Saves page URL, title, and headers to page_details table in DB
     page_id = save_page_details(url, page_title, headers)
     # Saves page links to page_links table in DB as long as a page_id was returned
@@ -98,12 +118,11 @@ def scrape_page(url):
         save_page_links(page_id, links)
 
     crawled_sites_count += 1
-    print("Pages crawled:", crawled_sites_count)
+    print("Pages crawled:", crawled_sites_count, "Skipped:", skipped_sites_count)
     return links
 
 def main(seed_url):
-    # Tracking all visited URLs. TODO: Is this type of checking sustainable at scale?
-    visited_urls = set()
+    global skipped_sites_count
     # Initializing the URLs in the queue with the SEED_URL
     urls_to_visit = set([seed_url])
 
@@ -111,11 +130,23 @@ def main(seed_url):
     while urls_to_visit:
         # Pop top URL off the stack
         current_url = urls_to_visit.pop()
-        if current_url not in visited_urls:
+        # Check each URL against the bloom filter to make sure it hasn't been seen before
+        if current_url in bloom_filter:
+            continue
+        # Add the URL to the bloom filter
+        bloom_filter.add(current_url)
+
+        # Skip a site if it fails the quality check
+        if evaluate_site_quality(current_url):
             # Grab links and store page details, add it to the visited list, and repeat
             new_links = scrape_page(current_url)
-            visited_urls.add(current_url)
-            urls_to_visit.update(set(new_links) - visited_urls)
 
+            # For all newly discovered links, check all against the bloom filter
+            for link in new_links:
+                if link not in bloom_filter:
+                    urls_to_visit.add(link)
+        else:
+            skipped_sites_count += 1
+            
 # Main execution starting from SEED_URL
 main(SEED_URL)
