@@ -3,15 +3,14 @@ from bs4 import BeautifulSoup # Library for parsing HTML documents
 import psycopg2 # PostgreSQL database adapter for Python
 from queue import Queue # Python module that provides a queue implementation
 import threading # Python module for working with threads
-from urllib.parse import urljoin # Allows us to convert all URLs to absolute URLs
+from urllib.parse import urljoin, urlparse # Allows us to convert all URLs to absolute URLs and parse URLs
 from bloom_filter2 import BloomFilter # https://github.com/remram44/python-bloom-filter
 import csv # Python's built-in module for processing .csv files
 
-# TODO: Transition to using whitelisted URLs, only exploring subdomains
-# https://tranco-list.eu/list/25G99/1000000 (Top 1 million most visited domains)
 # TODO: Add multithreading for scraping
 
-SEED_URL = "https://www.scrapingbee.com/blog/crawling-python/" # TODO: Temporary
+# CSV File containing the top 1 million most popular top-level-domains https://tranco-list.eu/list/25G99/1000000
+TLD_CSV_FILE = './top_million_domains.csv'
 acceptable_domain_extensions = [".com", ".net", ".edu", ".org", ".gov", ".mil"]
 # Initialize bloom filter with 100M element capactiy and 1% error tolerance
 bloom_filter = BloomFilter(max_elements = 100000000, error_rate = 0.01)
@@ -99,72 +98,91 @@ def evaluate_site_quality(url):
 
     return True
 
+# Checks to see if a URL belongs to the same top-level domain
+def is_same_domain(url, domain):
+    # Parses the url, separates into parts, and checks if the 'network location'
+    # or netloc section ends with the given domain name.
+    return urlparse(url).netloc.endswith(domain)
+
 # Visits a page and collects the title, headers, and links, and passes them to the DB querying functions.
-def scrape_page(url):
+def scrape_page(domain):
     global crawled_sites_count
     global skipped_sites_count
-    response = requests.get(url) # Sends an HTTP GET request using 'requests'
-    soup = BeautifulSoup(response.content, 'html.parser') # Creates the BeautifulSoup object which represents the page document as a nested data structure
 
-    # Getting the title, links, and headers using the BeautifulSoup object
-    # Getting the page title if it exists, otherwise setting it to ""
-    page_title = soup.title.string if soup.title else ""
-    
-    # Grabbing all headers, getting their text, and joining them using a space as the delimiter
-    headers = ' '.join([header.get_text() 
-    for header in soup.find_all(
-        ['h1', 'h2', 'h3']
-        )])
-    
-    # Collects the links and converts them to absolute URLs using urljoin.
-    # Finds all '<a>' anchor elements in the BeautifulSoup object that contain an 'href'
-    # attribute (which typically contains a link/URL). Then for each urljoin is used to
-    # convert it to an absolute URL, and these are stored in the list 'links'
-    links = [
-        urljoin(url, a['href'])
-        for a in soup.find_all(
-            'a', href = True
-            )
-        ]
-
-    # Saves page URL, title, and headers to page_details table in DB
-    page_id = save_page_details(url, page_title, headers)
-    # Saves page links to page_links table in DB as long as a page_id was returned
-    if page_id is not None:
-        save_page_links(page_id, links)
-
-    crawled_sites_count += 1
-    skipped_percentage = (skipped_sites_count / crawled_sites_count) * 100
-    # Debug statement that provides updates
-    print("Pages crawled:", crawled_sites_count, "Skipped:", skipped_sites_count, f"({skipped_percentage :.2f}% Skipped)")
-    return links
-
-def main(seed_url):
-    global skipped_sites_count
-    # Initializing the URLs in the queue with the SEED_URL
-    urls_to_visit = set([seed_url]) # TODO: Replace with URL frontier file? This approach is not scalable
+    # Initializing a set to store the subdomain queue for this domain
+    urls_to_visit = {f"https://{domain}"}
 
     # For all URLs remaining in the queue
     while urls_to_visit:
         # Pop top URL off the stack
-        current_url = urls_to_visit.pop()
+        url = urls_to_visit.pop()
         # Check each URL against the bloom filter to make sure it hasn't been seen before
-        if current_url in bloom_filter:
+        # Also checking to ensure only subdomains are crawled
+        if url in bloom_filter or not is_same_domain(url, domain):
+            skipped_sites_count += 1
             continue
         # Add the URL to the bloom filter
-        bloom_filter.add(current_url)
+        bloom_filter.add(url)
 
-        # Skip a site if it fails the quality check
-        if evaluate_site_quality(current_url):
-            # Grab links and store page details, add it to the visited list, and repeat
-            new_links = scrape_page(current_url)
+        # Only check subdomains that pass the quality check
+        if evaluate_site_quality(url):
+            try:
+                response = requests.get(url) # Sends an HTTP GET request using 'requests'
+                soup = BeautifulSoup(response.content, 'html.parser') # Creates the BeautifulSoup object which represents the page document as a nested data structure
 
-            # For all newly discovered links, check all against the bloom filter
-            for link in new_links:
-                if link not in bloom_filter:
-                    urls_to_visit.add(link)
+                # Getting the title, links, and headers using the BeautifulSoup object
+                # Getting the page title if it exists, otherwise setting it to ""
+                page_title = soup.title.string if soup.title else ""
+                
+                # Grabbing all headers, getting their text, and joining them using a space as the delimiter
+                headers = ' '.join([header.get_text() 
+                for header in soup.find_all(
+                    ['h1', 'h2', 'h3']
+                    )])
+                
+                # Collects the links and converts them to absolute URLs using urljoin.
+                # Finds all '<a>' anchor elements in the BeautifulSoup object that contain an 'href'
+                # attribute (which typically contains a link/URL). Then for each urljoin is used to
+                # convert it to an absolute URL, and these are stored in the list 'links'
+                links = [
+                    urljoin(url, a['href'])
+                    for a in soup.find_all(
+                        'a', href = True
+                        )
+                    ]
+
+                # Saves page URL, title, and headers to page_details table in DB
+                page_id = save_page_details(url, page_title, headers)
+                # Saves page links to page_links table in DB as long as a page_id was returned
+                if page_id is not None:
+                    save_page_links(page_id, links)
+                
+                # Debug statement that provides updates
+                crawled_sites_count += 1
+                skipped_percentage = (skipped_sites_count / crawled_sites_count) * 100
+                print("Pages crawled:", crawled_sites_count, "Skipped:", skipped_sites_count, f"({skipped_percentage :.2f}% Skipped)")
+                
+                # Only add new subdomain URLs to the queue
+                for link in links:
+                    if link not in bloom_filter:
+                        urls_to_visit.add(link)
+
+            except requests.RequestException as e:
+                print(f"Error fetching {url}: {e}")
         else:
             skipped_sites_count += 1
-            
-# Main execution starting from SEED_URL
-main(SEED_URL)
+
+    return
+
+def main():
+    global TLD_CSV_FILE
+    global skipped_sites_count
+
+    # Initializing the list of top-level domains from the .csv file
+    domains_to_visit = read_domains_from_csv(TLD_CSV_FILE)
+    print("Finished reading .csv file.")
+
+    for domain in domains_to_visit:
+        scrape_page(domain)
+
+main()
