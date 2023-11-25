@@ -1,7 +1,7 @@
 import requests # Used to fetch the HTML content of a page (GET,POST,DELETE)
 from bs4 import BeautifulSoup # Library for parsing HTML documents
 import psycopg2 # PostgreSQL database adapter for Python
-from queue import Queue # Python module that provides a queue implementation
+import queue # Python module that provides a queue implementation
 import threading # Python module for working with threads
 from urllib.parse import urljoin, urlparse # Allows us to convert all URLs to absolute URLs and parse URLs
 from bloom_filter2 import BloomFilter # https://github.com/remram44/python-bloom-filter
@@ -116,7 +116,7 @@ def evaluate_site_quality(url):
     return True
 
 # Checks to see if a URL belongs to the same top-level domain
-def is_same_domain(url, domain):
+def is_subdomain(url, domain):
     # Parses the url, separates into parts, and checks if the 'network location'
     # or netloc section ends with the given domain name.
     return urlparse(url).netloc.endswith(domain)
@@ -138,7 +138,7 @@ def scrape_page(domain):
         checked_urls += 1
         # Check each URL against the bloom filter to make sure it hasn't been seen before
         # Also checking to ensure only subdomains are crawled
-        if url in bloom_filter or not is_same_domain(url, domain):
+        if url in bloom_filter or not is_subdomain(url, domain):
             bloom_filter_conflicts += 1
             continue
         # Add the URL to the bloom filter
@@ -194,6 +194,26 @@ def scrape_page(domain):
             skipped_sites_count += 1
     return
 
+# The target function for each of the worker threads.
+def thread_task(domain_queue):
+    # While there are still uncrawled top-level domains
+    while not domain_queue.empty():
+        try:
+            # Attempts to immediately grab the next item from the queue. If somehow the queue is
+            # empty even though we *just* checked if it was, it will raise the `queue.Empty` exception.
+            # Essentially we want to either grab the next domain if available or move on, but not wait.
+            domain = domain_queue.get_nowait()
+            scrape_page(domain)
+            # Mark the task within the queue as completed
+            domain_queue.task_done()
+        # Handle the `queue.Empty` exception that could be raised by the `get_nowait()` function
+        except queue.Empty:
+            break
+        except Exception as e:
+            print(f"Could not process {domain}: {e}")
+            # In this event, we mark the task as complete to remove the domain from the queue and proceed
+            domain_queue.task_done()
+
 def main():
     global TLD_CSV_FILE
     global skipped_sites_count
@@ -201,6 +221,13 @@ def main():
     # Initializing the list of top-level domains from the .csv file
     domains_to_visit = read_domains_from_csv(TLD_CSV_FILE)
     print("Finished reading .csv file.")
+
+    # Initialize a queue that will hold the list of all remaining unscraped domains
+    domain_queue = queue.Queue()
+    # Populate the queue
+    for domain in domains_to_visit:
+        domain_queue.put(domain)
+    print("Finished populating domain queue.")
 
     # Create a thread to handle periodic saving of the bloom filter with an interval of 30 seconds
     bloom_filter_saving_thread = threading.Thread(
@@ -212,8 +239,20 @@ def main():
     # Start the thread
     bloom_filter_saving_thread.start()
 
-    for domain in domains_to_visit:
-        scrape_page(domain)
+    # Create and start main body of threads for scraping
+    threads = []
+    for _ in range(40): # Number of threads defined here
+        # When passing arguments to a target function for a thread, a tuple is expected.
+        # Even though only the domain_queue is being passed we must 'make it a tuple' with a
+        # set of parentheses and a trailing comma.
+        thread = threading.Thread(target = thread_task, args = (domain_queue,))
+        thread.start()
+        threads.append(thread)
+
+    # Wait for all threads to finish (which will not realistically happen in this case)
+    for thread in threads:
+        # Here .join() blocks threads until they are all complete
+        thread.join()
 
 
 # CSV File containing the top 1 million most popular top-level-domains https://tranco-list.eu/list/25G99/1000000
