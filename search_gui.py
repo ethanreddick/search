@@ -2,14 +2,62 @@ import sys
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLineEdit, QComboBox, QLabel, QTextEdit, QRadioButton, QButtonGroup, QStackedWidget, QGridLayout, QFormLayout, QSizePolicy
 from PyQt5.QtGui import QPalette, QColor
 from PyQt5.QtCore import Qt
+import psycopg2 # Python/PostgreSQL database adapter
 
 # Global variable to track the current page index
 current_page_index = 0
 
+# Database connection setup
+def connect_database():
+    try:
+        return psycopg2.connect(
+            host="localhost",
+            database="scraper_db",
+            user="ethan",
+            password="search"
+        )
+    except Exception as e:
+        print(f"Error connecting to database: {e}")
+        return None
+
 def search():
+    # Grab user's query from the search bar
     query = search_bar.text()
-    bias = bias_selector.currentText()
-    results_display.setPlainText(f"Search query: {query}\nSearch bias: {bias}")
+    bias = bias_selector.currentText() # TODO: Build in bias functionality
+
+    # Set up DB connection
+    conn = connect_database()
+    if conn:
+        cur = conn.cursor()
+        # Query the database, inserting wildcard characters on both sides of the query
+        # Here the titles and headers are searched for the query, and results in a title are worth 5 times
+        # the value of a match in the headers.
+        cur.execute(
+            """
+            SELECT title, url, 5 as weight FROM page_details WHERE title ILIKE %s
+            UNION
+            SELECT title, url, 1 as weight FROM page_details WHERE headers ILIKE %s
+            ORDER BY weight DESC, title
+            """, 
+            ('%' + query + '%', '%' + query + '%',)
+            )
+        results = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        # Build the results from the query
+        results_text = " "
+        for result in results:
+            # Need to find correct order of results
+            title, url = result[0], result[1]
+            # Format the results for the user
+            results_text += f"<b>{title}</b><br>{url}<br><br><br>"
+
+        results_display.setHtml(results_text)
+    else:
+        results_display.setPlainText("Failed to connect to the database.")
+
+    
 
 def open_settings():
     global current_page_index

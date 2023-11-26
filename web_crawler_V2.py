@@ -204,7 +204,7 @@ def scrape_page(domain):
                 crawled_sites_count += 1
                 dropped_percentage = ((skipped_sites_count + bloom_filter_conflicts) / checked_urls) * 100
                 print("URLs checked:", checked_urls, "\nPages crawled:", crawled_sites_count, "\nRejected:", skipped_sites_count, 
-                "\nBloom filter conflicts:", bloom_filter_conflicts, f"\n({dropped_percentage :.2f}% total skipped)")
+                "\nBloom filter conflicts:", bloom_filter_conflicts, f"\n({dropped_percentage :.2f}% total skipped)\nMost recent URL: {url}")
                 
                 # Only add new subdomain URLs to the queue
                 for link in links:
