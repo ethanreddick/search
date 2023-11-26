@@ -1,11 +1,17 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLineEdit, QComboBox, QLabel, QTextEdit, QRadioButton, QButtonGroup, QStackedWidget, QGridLayout, QFormLayout, QSizePolicy
-from PyQt5.QtGui import QPalette, QColor
-from PyQt5.QtCore import Qt
-import psycopg2 # Python/PostgreSQL database adapter
+import psycopg2  # Python/PostgreSQL database adapter
+from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLineEdit, QComboBox, QLabel, QListWidget, QListWidgetItem, QTextEdit, QRadioButton, QButtonGroup, QStackedWidget, QGridLayout, QFormLayout, QSizePolicy
+from PyQt5.QtGui import QPalette, QColor, QDesktopServices, QFont
+from PyQt5.QtCore import Qt, QUrl, QSize
+
+# TODO: Highlight elements when mousing over, Have 20 results per page, have pagination work
 
 # Global variable to track the current page index
 current_page_index = 0
+# Global variables for pagination
+current_page = 1
+total_pages = 0
+ITEMS_PER_PAGE = 20
 
 # Database connection setup
 def connect_database():
@@ -21,6 +27,8 @@ def connect_database():
         return None
 
 def search():
+    # Grab pagination variables
+    global current_page, total_pages
     # Grab user's query from the search bar
     query = search_bar.text()
     bias = bias_selector.currentText() # TODO: Build in bias functionality
@@ -30,11 +38,11 @@ def search():
     if conn:
         cur = conn.cursor()
         # Query the database, inserting wildcard characters on both sides of the query
-        # Here the titles and headers are searched for the query, and results in a title are worth 5 times
+        # Here the titles and headers are searched for the query, and results in a title are worth 50 times
         # the value of a match in the headers.
         cur.execute(
             """
-            SELECT title, url, 5 as weight FROM page_details WHERE title ILIKE %s
+            SELECT title, url, 50 as weight FROM page_details WHERE title ILIKE %s
             UNION
             SELECT title, url, 1 as weight FROM page_details WHERE headers ILIKE %s
             ORDER BY weight DESC, title
@@ -45,19 +53,52 @@ def search():
         cur.close()
         conn.close()
 
-        # Build the results from the query
-        results_text = " "
-        for result in results:
-            # Need to find correct order of results
-            title, url = result[0], result[1]
-            # Format the results for the user
-            results_text += f"<b>{title}</b><br>{url}<br><br><br>"
+        # Total number of results
+        total_items = len(results)
+        # Calculate total pages
+        total_pages = (total_items + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
+        update_pagination_label()
 
-        results_display.setHtml(results_text)
+        # Determine the range of results to display for the current page
+        start_index = (current_page - 1) * ITEMS_PER_PAGE
+        end_index = start_index + ITEMS_PER_PAGE
+        page_results = results[start_index:end_index]
+
+        # Clear previous results
+        results_display.clear()
+
+        for title, url, _ in page_results:
+            item = QListWidgetItem()
+            # Change element background color when hovered over
+            results_display.setStyleSheet("""
+                QListWidget::item:hover {
+                    background-color: #282828;
+                }
+            """)
+            
+            custom_widget = create_custom_item(title, url)
+            # Set a consistent text size
+            item.setSizeHint(custom_widget.sizeHint())
+            results_display.addItem(item)
+            # Set the custom widget for the item
+            results_display.setItemWidget(item, custom_widget)
+            item.setData(Qt.UserRole, url)  # Store URL in item's data
     else:
         results_display.setPlainText("Failed to connect to the database.")
 
-    
+
+def create_custom_item(title, url):
+    item_widget = QWidget()
+    item_layout = QVBoxLayout()
+
+    title_label = QLabel(f"<b>{title}</b>")
+    url_label = QLabel(url)
+
+    item_layout.addWidget(title_label)
+    item_layout.addWidget(url_label)
+
+    item_widget.setLayout(item_layout)
+    return item_widget
 
 def open_settings():
     global current_page_index
@@ -158,8 +199,15 @@ search_bar.returnPressed.connect(search)
 main_layout.addLayout(top_layout)
 
 # Results display
-results_display = QTextEdit()
+results_display = QListWidget()
 main_layout.addWidget(results_display)
+
+# When a site element is clicked, open the url in the default browser
+def open_url(item):
+    url = QUrl(item.data(Qt.UserRole))
+    QDesktopServices.openUrl(url)
+
+results_display.itemClicked.connect(open_url)
 
 # Pagination controls
 pagination_layout = QHBoxLayout()
@@ -173,6 +221,50 @@ main_layout.addLayout(pagination_layout)
 
 # Setting main layout for the main page
 main_page.setLayout(main_layout)
+
+
+def go_to_previous_page():
+    global current_page
+    if current_page > 1:
+        current_page -= 1
+        search()
+        update_pagination_label()
+
+
+def go_to_next_page():
+    global current_page
+    if current_page < total_pages:
+        current_page += 1
+        search()
+        update_pagination_label()
+
+
+def update_pagination_label():
+    pagination_label.setText(f"Page {current_page} of {total_pages}")
+
+
+# Connect these functions to your 'Previous' and 'Next' buttons
+prev_button.clicked.connect(go_to_previous_page)
+next_button.clicked.connect(go_to_next_page)
+
+# Add a QLabel between your 'Previous' and 'Next' buttons to display the page number
+pagination_label = QLabel()
+pagination_layout.addWidget(pagination_label)
+update_pagination_label()  # Call this function initially and after every page change
+
+# Remove existing widgets from pagination_layout
+for i in reversed(range(pagination_layout.count())):
+    widget_to_remove = pagination_layout.itemAt(i).widget()
+    pagination_layout.removeWidget(widget_to_remove)
+    widget_to_remove.setParent(None)
+
+# Reconfigure pagination_layout
+pagination_layout.addStretch(1)  # Add stretchable space before the controls
+pagination_layout.addWidget(prev_button)
+pagination_layout.addWidget(pagination_label)
+pagination_layout.addWidget(next_button)
+pagination_layout.addStretch(1)  # Add stretchable space after the controls
+
 
 # Settings page
 settings_page = QWidget()
@@ -204,6 +296,7 @@ settings_layout.addStretch()  # Add stretchable space to align items to the top
 
 # Setting layout for the settings page
 settings_page.setLayout(settings_layout)
+
 
 # Adding both pages to the stacked widget
 stacked_widget.addWidget(main_page)
