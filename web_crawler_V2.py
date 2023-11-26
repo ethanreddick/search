@@ -9,8 +9,10 @@ import csv # Python's built-in module for processing .csv files
 import pickle # Allows for pickling (saving) and de-pickling (loading) of the bloom_filter
 import os # Operating system interface used when loading bloom_filter from disk
 import time # Required so that the bloom_filter can be saved on a time interval
+import logging # For cleaner viewing of the crawling results, I will return only errors
 
-# TODO: Add multithreading for scraping
+# Only show errors in the console, not warnings
+logging.basicConfig(level = logging.ERROR)
 
 # Database connection setup
 def connect_database():
@@ -100,16 +102,23 @@ def evaluate_site_quality(url):
     # All rules that can cause a site to fail prior to visiting the site
     # Eliminate invalid URLs not starting with 'https://'
     if not url.startswith("https://"): return False
+    # Eliminate URLs that contain the hash symbol
+    if '#' in url: return False
     # Eliminate URLs that do not have an acceptable domain extension
     if not any(extension in url for extension in acceptable_domain_extensions): return False
 
     # All other rules
     try:
         response = requests.get(url)
+        soup = BeautifulSoup(response.content, 'html.parser')
         # Eliminate sites with a response time above 1 second
         if response.elapsed.total_seconds() > 1: return False
         # Eliminate sites with a response other than an HTML document
         if "text/html" not in response.headers.get('Content-Type', ''): return False
+        # Eliminate sites containing unknown characters (\ufffd is unicode for unknown character)
+        if '\ufffd' in response.content.decode(response.apparent_encoding, errors = 'replace'): return False
+        # Eliminate sites not in English
+        if not (soup.find('html') and soup.find('html').get('lang') == 'en'): return False
     except requests.exceptions.ConnectionError as e:
         return False
 
@@ -241,7 +250,7 @@ def main():
 
     # Create and start main body of threads for scraping
     threads = []
-    for _ in range(40): # Number of threads defined here
+    for _ in range(45): # Number of threads defined here
         # When passing arguments to a target function for a thread, a tuple is expected.
         # Even though only the domain_queue is being passed we must 'make it a tuple' with a
         # set of parentheses and a trailing comma.
