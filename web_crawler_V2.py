@@ -10,6 +10,7 @@ import pickle # Allows for pickling (saving) and de-pickling (loading) of the bl
 import os # Operating system interface used when loading bloom_filter from disk
 import time # Required so that the bloom_filter can be saved on a time interval
 import logging # For cleaner viewing of the crawling results, I will return only errors
+import tempfile # This will be used to ensure the bloom_filter saving will not be corrupted
 
 # Only show errors in the console, not warnings
 logging.basicConfig(level = logging.ERROR)
@@ -78,8 +79,21 @@ def save_page_links(page_id, links):
 
 # Write the bloom filter to disk so crawler's state can persist after crashes. Saves as .pkl file type.
 def save_bloom_filter_state(bloom_filter, file_name):
-    with open(file_name, 'wb') as file:
-        pickle.dump(bloom_filter, file)
+    # This function creates a temp file and returns a tuple, the 'fd' or file details
+    # and the name, which are both used to work with and manipulate the file.
+    temp_fd, temp_name = tempfile.mkstemp()
+    try:
+        # Convert the file descriptor into a python file object.
+        # 'wb' means 'write in binary mode', which is what .pkl files use
+        with os.fdopen(temp_fd, 'wb') as tmp:
+            # Write the bloom_filter as a temporary file
+            pickle.dump(bloom_filter, tmp)
+        # Once saving as a tmp is complete, replace the old file with the tmp
+        os.rename(temp_name, file_name)
+    except Exception as e:
+        print(f"Error saving the bloom filter: {e}")
+        # If an error happens, remove the temp file
+        os.remove(temp_name)
 
 # Read the bloom filter from disk for use in the event of a crash TODO: Automatic restart
 def load_bloom_filter_state(file_name):
