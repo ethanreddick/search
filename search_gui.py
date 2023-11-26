@@ -4,8 +4,6 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHB
 from PyQt5.QtGui import QPalette, QColor, QDesktopServices, QFont
 from PyQt5.QtCore import Qt, QUrl, QSize
 
-# TODO: Highlight elements when mousing over, Have 20 results per page, have pagination work
-
 # Global variable to track the current page index
 current_page_index = 0
 # Global variables for pagination
@@ -53,39 +51,45 @@ def search():
         cur.close()
         conn.close()
 
-        # Total number of results
-        total_items = len(results)
-        # Calculate total pages
-        total_pages = (total_items + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
-        update_pagination_label()
+        if len(results) == 0:
+            # No results found
+            no_results_item = QListWidgetItem("No results found")
+            no_results_item.setTextAlignment(Qt.AlignCenter)  # Center the text
+            results_display.addItem(no_results_item)
+        else:
 
-        # Determine the range of results to display for the current page
-        start_index = (current_page - 1) * ITEMS_PER_PAGE
-        end_index = start_index + ITEMS_PER_PAGE
-        page_results = results[start_index:end_index]
+            # Total number of results
+            total_items = len(results)
+            # Calculate total pages
+            total_pages = (total_items + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
+            update_pagination_label()
 
-        # Clear previous results
-        results_display.clear()
+            # Determine the range of results to display for the current page
+            start_index = (current_page - 1) * ITEMS_PER_PAGE
+            end_index = start_index + ITEMS_PER_PAGE
+            page_results = results[start_index:end_index]
 
-        for title, url, _ in page_results:
-            item = QListWidgetItem()
-            # Change element background color when hovered over
-            results_display.setStyleSheet("""
-                QListWidget::item:hover {
-                    background-color: #282828;
-                }
-            """)
-            
-            custom_widget = create_custom_item(title, url)
-            # Set a consistent text size
-            item.setSizeHint(custom_widget.sizeHint())
-            results_display.addItem(item)
-            # Set the custom widget for the item
-            results_display.setItemWidget(item, custom_widget)
-            item.setData(Qt.UserRole, url)  # Store URL in item's data
+            # Clear previous results
+            results_display.clear()
+
+            for title, url, _ in page_results:
+                item = QListWidgetItem()
+                # Change element background color when hovered over
+                results_display.setStyleSheet("""
+                    QListWidget::item:hover {
+                        background-color: #282828;
+                    }
+                """)
+                
+                custom_widget = create_custom_item(title, url)
+                # Set a consistent text size
+                item.setSizeHint(custom_widget.sizeHint())
+                results_display.addItem(item)
+                # Set the custom widget for the item
+                results_display.setItemWidget(item, custom_widget)
+                item.setData(Qt.UserRole, url)  # Store URL in item's data
     else:
         results_display.setPlainText("Failed to connect to the database.")
-
 
 def create_custom_item(title, url):
     item_widget = QWidget()
