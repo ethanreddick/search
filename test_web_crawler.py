@@ -2,6 +2,8 @@ import pytest
 import aiohttp
 import aioresponses
 from web_crawler import get_links
+from web_crawler import save_to_database, retrieve_from_database
+from web_crawler import crawl_concurrently
 
 # Mocked website content
 mocked_html = """
@@ -32,3 +34,28 @@ async def test_get_links():
         assert 'https://example.com/relative2' in links
         assert 'https://www.external-site.com/absolute' in links
 
+@pytest.mark.asyncio
+async def test_save_and_retrieve_from_database():
+    # Given
+    data_to_save = {'url': 'https://example.com', 'title': 'Example Page'}
+    
+    # When
+    await save_to_database(data_to_save)
+    retrieved_data = await retrieve_from_database(data_to_save['url'])
+    
+    # Then
+    # Add assertions based on the expected behavior of your database functions
+    assert retrieved_data == data_to_save
+    # Add more assertions as needed
+
+@pytest.mark.asyncio
+async def test_concurrent_crawl():
+    base_urls = ['https://example1.com', 'https://example2.com', 'https://example3.com']
+    
+    # When
+    results = await crawl_concurrently(base_urls)
+    
+    # Then
+    # Add assertions based on the expected behavior of your concurrent crawler
+    assert len(results) == len(base_urls)
+    # Add more assertions as needed
