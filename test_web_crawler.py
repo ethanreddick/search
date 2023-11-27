@@ -1,11 +1,8 @@
 import pytest
-import aiohttp
-import aioresponses
-from web_crawler import get_links
-from web_crawler import save_to_database, retrieve_from_database
-from web_crawler import crawl_concurrently
+from aioresponses import aioresponses
+from web_crawler_V2 import save_page_details, save_page_links, evaluate_site_quality, is_subdomain, scrape_page
 
-# Mocked website content
+# Mocked website content for testing
 mocked_html = """
 <html>
     <head></head>
@@ -17,45 +14,64 @@ mocked_html = """
 </html>
 """
 
-@pytest.mark.asyncio
-async def test_get_links():
-    base_url = 'https://example.com'
+# Fixture to provide a mocked aiohttp response
+@pytest.fixture
+def mocked_aiohttp():
+    with aioresponses() as mocked:
+        yield mocked
 
-    # Mock the aiohttp request using aioresponses
-    with aioresponses.aioresponses() as mocked:
-        mocked.get(base_url, payload=mocked_html, status=200)
-        
-        # When
-        links = await get_links(base_url)
-        
-        # Then
-        assert len(links) == 3  # Ensure we found all links
-        assert 'https://example.com/relative1' in links
-        assert 'https://example.com/relative2' in links
-        assert 'https://www.external-site.com/absolute' in links
-
+# Test for the save_page_details function
 @pytest.mark.asyncio
-async def test_save_and_retrieve_from_database():
+async def test_save_page_details(mocked_aiohttp):
     # Given
-    data_to_save = {'url': 'https://example.com', 'title': 'Example Page'}
-    
-    # When
-    await save_to_database(data_to_save)
-    retrieved_data = await retrieve_from_database(data_to_save['url'])
-    
-    # Then
-    # Add assertions based on the expected behavior of your database functions
-    assert retrieved_data == data_to_save
-    # Add more assertions as needed
+    url = 'https://example.com'
+    title = 'Example Page'
+    headers = 'Header 1 Header 2'
 
+    # When
+    mocked_aiohttp.get(url, payload=mocked_html, status=200)
+    page_id = await save_page_details(url, title, headers)
+
+    # Then
+    assert page_id is not None
+
+# Test for the save_page_links function
 @pytest.mark.asyncio
-async def test_concurrent_crawl():
-    base_urls = ['https://example1.com', 'https://example2.com', 'https://example3.com']
+async def test_save_page_links(mocked_aiohttp):
+    # Given
+    page_id = 1
+    links = ['https://example.com/link1', 'https://example.com/link2']
+
+    # When
+    mocked_aiohttp.get('https://example.com/link1', payload=mocked_html, status=200)
+    mocked_aiohttp.get('https://example.com/link2', payload=mocked_html, status=200)
+    await save_page_links(page_id, links)
+
+# Test for the evaluate_site_quality function
+def test_evaluate_site_quality():
+    # Given
+    valid_url = 'https://example.com'
+    invalid_url = 'ftp://invalid-url.com'
+    
+    # When/Then
+    assert evaluate_site_quality(valid_url) is True
+    assert evaluate_site_quality(invalid_url) is False
+
+# Test for the is_subdomain function
+def test_is_subdomain():
+    # Given
+    url = 'https://sub.example.com'
+    domain = 'example.com'
+    
+    # When/Then
+    assert is_subdomain(url, domain) is True
+
+# Test for the scrape_page function
+@pytest.mark.asyncio
+async def test_scrape_page(mocked_aiohttp):
+    # Given
+    domain = 'example.com'
     
     # When
-    results = await crawl_concurrently(base_urls)
-    
-    # Then
-    # Add assertions based on the expected behavior of your concurrent crawler
-    assert len(results) == len(base_urls)
-    # Add more assertions as needed
+    mocked_aiohttp.get('https://example.com', payload=mocked_html, status=200)
+    await scrape_page(domain)

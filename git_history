@@ -1,3 +1,15 @@
+commit 12a03b5bb19ae7d00a65b80695608598ac05feee
+Author: justinn0725 <jn09540@georgiasouthern.edu>
+Date:   Mon Nov 27 13:53:25 2023 -0500
+
+    added pytest for concurrency, database storing
+
+commit 3b91467f030ebf647c21c0ec78965b29420ef6fe
+Author: justinn0725 <jn09540@georgiasouthern.edu>
+Date:   Mon Nov 27 07:20:33 2023 -0500
+
+    Added file to display git history
+
 commit 63de6feca294c1215ad827da2d22496f00a20255
 Author: Ethan Reddick <ethanreddick55@gmail.com>
 Date:   Sun Nov 26 14:53:54 2023 -0500
