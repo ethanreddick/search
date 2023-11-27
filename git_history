@@ -1,0 +1,167 @@
+commit 63de6feca294c1215ad827da2d22496f00a20255
+Author: Ethan Reddick <ethanreddick55@gmail.com>
+Date:   Sun Nov 26 14:53:54 2023 -0500
+
+    Addressed edge case where no results are returned from the database, the user is now aware there are no results instead of waiting under the impression it is loading.
+
+commit f999d11e6c6f9589dfd9b229e798e5d119d09a66
+Author: Ethan Reddick <ethanreddick55@gmail.com>
+Date:   Sun Nov 26 14:00:20 2023 -0500
+
+    Fixed pagination controls, pagination implementation, limited results to 20 per page, and fixed highlighting when hovering over elements. Still a bug to fix where that part doesn't work until you click out of and then back into the search engine's window though.
+
+commit dde1f4632bb73d26abcf721426cb9366bd0a756b
+Author: Ethan Reddick <ethanreddick55@gmail.com>
+Date:   Sun Nov 26 12:08:16 2023 -0500
+
+    Connected GUI to the database, and took care of some basic formatting for the results that are returned. Will have to switch to a different solution instead of 'QTextEdit' to implement the functionality for the user to be able to click on their desired result and open it in the browser.
+
+commit 053da7276fa59adf6c5d20cacd40e222556f9ec3
+Author: Ethan Reddick <ethanreddick55@gmail.com>
+Date:   Sat Nov 25 19:58:30 2023 -0500
+
+    Fixed a bug where sometimes when the script was quit the bloom_filter saving process would be interrupted resulting in a corrupted bloom_filter.pkl file. The fix involves saving to a temp file and then once saving is complete then replacing the old file with the new one. If the saving process is messed up somehow the new temp file is simply discarded.
+
+commit 12c75af246291e0dfe1591dbf0be6c783df36ce5
+Author: Ethan Reddick <ethanreddick55@gmail.com>
+Date:   Sat Nov 25 19:40:13 2023 -0500
+
+    Added more evalutate_site_quality restrictions including: site needs to be in english, have no unknown characters, and not contain any '#' symbols in the URL. I also introduced the logging module so I can control what level of warnings/errors are printed to the console.
+
+commit 69d31a8f261d9ed31490a631d6a00e2225667d94
+Author: Ethan Reddick <ethanreddick55@gmail.com>
+Date:   Fri Nov 24 21:06:27 2023 -0500
+
+    Implemented multithreading and added a thread_task() function for the worker threads.
+
+commit b7e529c6060f4ea2d6d8c0b447b89523d0e4c8fa
+Author: Ethan Reddick <ethanreddick55@gmail.com>
+Date:   Thu Nov 23 20:37:36 2023 -0500
+
+    Reset repository to desired state
+
+commit b2668b0b78cb9b68bc4e1a3d7749e42caa88ab57
+Author: Ethan Reddick <ethanreddick55@gmail.com>
+Date:   Thu Nov 23 18:13:53 2023 -0500
+
+    Implemented the use of a .csv file containing the top 1 million URLs that feeds the program, and only subdomains of those top-level domains are whitelisted. I moved a lot of the processing from the main method into the scrape_page function due to this change. Next job is to introduce concurrency to scale up this operation.
+
+commit 7d78f8bc72385bf3eacc4a41e53caba818ed5cc9
+Author: Ethan Reddick <ethanreddick55@gmail.com>
+Date:   Thu Nov 23 12:29:29 2023 -0500
+
+    Beginning to transition to using the top million domains .csv system
+
+commit 68453d513710684cebb589b74524ec0cfa6ce23f
+Author: Ethan Reddick <ethanreddick55@gmail.com>
+Date:   Thu Nov 23 11:54:14 2023 -0500
+
+    Adding postgreSQL setup guide
+
+commit 594b3ba44ffd59bd95960c1949c08810e36c18f9
+Author: Ethan Reddick <ethanreddick55@gmail.com>
+Date:   Wed Nov 22 22:56:26 2023 -0500
+
+    Added the use of a bloom filter to efficiently manage the set of visited URLs. Also added some rules for evaluating URL quality.
+
+commit 9d4b37c3c1b6848b318eaa9d0a6d67d1550148c9
+Author: Ethan Reddick <ethanreddick55@gmail.com>
+Date:   Wed Nov 22 17:56:29 2023 -0500
+
+    Fixed issues caused by URLs being longer than space allotted for them in the database
+
+commit dae9d4aedb57215f7e5e5997594173a407531e68
+Author: Ethan Reddick <ethanreddick55@gmail.com>
+Date:   Wed Nov 22 17:43:23 2023 -0500
+
+    Working on a from-the-ground-up rebuild of the webcrawler completely reimagined and with no copy+paste from chatGPT. This first commit has the basic web-crawler functionality and is working with a postgreSQL database. It visits a site and stores the URL, title, headers, and all other links on the page and repeats with the links it gathered.
+
+commit 34dfe844204ed11498a458d67f414c1b8e968b3c
+Author: Ethan Reddick <ethanreddick55@gmail.com>
+Date:   Tue Nov 21 11:42:09 2023 -0500
+
+    Initial stages of implementing the page analysis functionality into the web crawler
+
+commit b945eb9b6787b772f52bd9e208f90376b085af22
+Author: Ethan Reddick <ethanreddick55@gmail.com>
+Date:   Tue Oct 31 13:21:27 2023 -0400
+
+    Switched from using a text-file based adjacency matrix to a postgreSQL database, working on ensuring proper start-up and tear-down so the script doesn't overwrite the database
+
+commit c32aff93c129c4f9456776d1f12a62d080f5e740
+Author: Ethan Reddick <ethanreddick55@gmail.com>
+Date:   Sun Oct 29 16:45:14 2023 -0400
+
+    Fixed URLs saving twice, the adjacency matrix being overwritten, the web crawler now properly loads state from the matrix, and the output was modified to show more information.
+
+commit b0364d2dcecd5268c9b5b930c226e69b1cf666ce
+Author: Ethan Reddick <ethanreddick55@gmail.com>
+Date:   Sun Oct 29 15:37:09 2023 -0400
+
+    Fixed issue where saving was happening twice each interval.
+
+commit b786e78c3ec73b6324f0ef79534700d6ec807409
+Author: Ethan Reddick <ethanreddick55@gmail.com>
+Date:   Sun Oct 29 14:08:52 2023 -0400
+
+    Web scraper now skips sites with a basic whitelist/blacklist approach, and it saves successfully to the adjacency matrix while it runs.
+
+commit de35f775289962c098e00a21fa3683106ddb5a2d
+Author: Ethan Reddick <ethanreddick55@gmail.com>
+Date:   Wed Oct 18 18:06:53 2023 -0400
+
+    Switched from SQLite to PostgreSQL and dramatically improved page analysis speed.
+
+commit fa4fcd4123f48f71d82f34239b4454659a4b7e8d
+Author: Ethan Reddick <ethanreddick55@gmail.com>
+Date:   Tue Sep 26 10:39:03 2023 -0400
+
+    Updated web crawler and added page_analysis script that scrapes basic page data and writes it to a SQLite db.
+
+commit 9e6074a4a3d24a457ed00acc72835f89a6b4c003
+Author: Ethan Reddick <ethanreddick55@gmail.com>
+Date:   Tue Sep 26 08:25:09 2023 -0400
+
+    Web crawler now prints live updates of how many sites it has crawled, uses asynchronous requests and multithreading, and creates a .txt file showing the adjacency matrix and a domains.txt file listing all domains visited
+
+commit e4393994a571842bbf5e6ee7ee7a80c0d763c3f6
+Author: justinn0725 <86483095+justinn0725@users.noreply.github.com>
+Date:   Mon Sep 18 19:31:08 2023 -0400
+
+    web crawler
+
+commit 7ecc2959e20b6efee71513b9f4fb2127e69ac5ad
+Author: justinn0725 <86483095+justinn0725@users.noreply.github.com>
+Date:   Thu Sep 14 13:32:34 2023 -0400
+
+    web crawler
+
+commit 9d6d4f67e585c23a28db52940f738b9b6ce58a0a
+Author: justinn0725 <86483095+justinn0725@users.noreply.github.com>
+Date:   Thu Sep 14 07:43:32 2023 -0400
+
+    web_crawler
+
+commit f99c26750591a31949e0fd812b6f2f946847b4b4
+Author: Ethan Reddick <ethanreddick55@gmail.com>
+Date:   Tue Sep 12 11:45:26 2023 -0400
+
+    added a settings page, added a functioning dark/light theme selector, and now the search query bar returns a debug style result to demo functionality
+
+commit cfc3bc3fdbaffac34ea04757ef76e02e9c703bf6
+Author: Ethan Reddick <ethanreddick55@gmail.com>
+Date:   Mon Sep 11 23:13:16 2023 -0400
+
+    First git commit, includes functioning GUI prototype
+
+commit fbf10e9c0ca687112ec1eeead0828c60208e1c9e
+Author: Ethan Reddick <ethanreddick55@gmail.com>
+Date:   Tue Sep 5 13:47:47 2023 -0400
+
+    Creating initial component files
+
+commit f47b0f8e36e9ffae19fa75a6898043f89b66ed63
+Author: ethanreddick <63374429+ethanreddick@users.noreply.github.com>
+Date:   Tue Sep 5 10:21:21 2023 -0400
+
+    Initial commit
