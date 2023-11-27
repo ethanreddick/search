@@ -2,6 +2,7 @@ import pytest
 from aioresponses import aioresponses
 from web_crawler_V2 import save_page_details, save_page_links, evaluate_site_quality, is_subdomain, scrape_page
 
+
 # Mocked website content for testing
 mocked_html = """
 <html>
