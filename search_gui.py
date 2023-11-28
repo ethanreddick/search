@@ -55,6 +55,7 @@ def search():
             # No results found
             no_results_item = QListWidgetItem("No results found")
             no_results_item.setTextAlignment(Qt.AlignCenter)  # Center the text
+            results_display.clear()
             results_display.addItem(no_results_item)
         else:
 
