@@ -35,18 +35,31 @@ def search():
     conn = connect_database()
     if conn:
         cur = conn.cursor()
+
+        # Construct the SQL query based on the bias
+        # Construct the SQL query based on the bias
+        bias_condition = ""
+        params = ('%' + query + '%',)  # Single-parameter tuple
+        if bias == "Research":
+            bias_condition = "AND (url LIKE %s OR url LIKE %s OR url LIKE %s)"
+            # Add parameters for each condition
+            params += ('%.edu', '%.gov', '%.mil')
+        elif bias == "Corporate":
+            bias_condition = "AND url LIKE %s"
+            params += ('%.com',)
+
         # Query the database, inserting wildcard characters on both sides of the query
         # Here the titles and headers are searched for the query, and results in a title are worth 50 times
         # the value of a match in the headers.
-        cur.execute(
-            """
-            SELECT title, url, 50 as weight FROM page_details WHERE title ILIKE %s
+        sql_query = f"""
+            SELECT title, url, 50 as weight FROM page_details 
+            WHERE title ILIKE %s {bias_condition}
             UNION
-            SELECT title, url, 1 as weight FROM page_details WHERE headers ILIKE %s
+            SELECT title, url, 1 as weight FROM page_details 
+            WHERE headers ILIKE %s {bias_condition}
             ORDER BY weight DESC, title
-            """, 
-            ('%' + query + '%', '%' + query + '%',)
-            )
+        """
+        cur.execute(sql_query, params * 2)
         results = cur.fetchall()
         cur.close()
         conn.close()
@@ -189,7 +202,7 @@ top_layout.addWidget(bias_label)
 
 # Capitalized search biases and added "Privacy"
 bias_selector = QComboBox()
-bias_selector.addItems(['Corporate', 'Research', 'Charity', 'Privacy'])
+bias_selector.addItems(['None', 'Corporate', 'Research'])
 top_layout.addWidget(bias_selector)
 
 # Search button
