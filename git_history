@@ -1,3 +1,27 @@
+commit 42bca30ba688231e520dff0d81c49ac48ddac7ff
+Author: Ethan Reddick <ethanreddick55@gmail.com>
+Date:   Tue Nov 28 12:03:41 2023 -0500
+
+    Added basic search bias functionality that feeds into the new SQL query
+
+commit 2a87e8fae40f647a506d624e6409a030b31fbb1f
+Author: Ethan Reddick <ethanreddick55@gmail.com>
+Date:   Mon Nov 27 22:46:59 2023 -0500
+
+    Did a quick fix that refreshes the GUI search results to a clear page if no results are found. Before it was simply tacking on that message to the list of the previous search.
+
+commit 8e306e0b2d9efcc5aba16e510bfc743856e29699
+Author: Ethan Reddick <ethanreddick55@gmail.com>
+Date:   Mon Nov 27 22:15:55 2023 -0500
+
+    Removed several depracated files, still working on the pytest situation. Issue is the tests keep calling the actual web crawler somehow even after using mocking and only testing functions not directly involved in the crawling loop.
+
+commit d6563eefbed90285185a7961aa0397d1cee3f6a2
+Author: justinn0725 <jn09540@georgiasouthern.edu>
+Date:   Mon Nov 27 14:59:50 2023 -0500
+
+    Git history, Pytest Results and updated pytest
+
 commit fa80f907c251d406263f996507ba9918eaf9ff15
 Author: justinn0725 <jn09540@georgiasouthern.edu>
 Date:   Mon Nov 27 14:51:58 2023 -0500
