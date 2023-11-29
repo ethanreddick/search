@@ -1,6 +1,5 @@
 import pytest
 from unittest.mock import patch, MagicMock
-# Replace with the actual module name where the crawler functions are defined
 import web_crawler_V2
 from web_crawler_V2 import *
 
